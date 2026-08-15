@@ -3,6 +3,7 @@ package service
 import (
 	"randomshit/database"
 	"randomshit/models"
+	"randomshit/repositories"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -62,27 +63,11 @@ func Addpoint(user *models.Users) (*models.Users, error) {
 
 }
 
-func CreateUser(user *models.Users) (*models.Users, error) {
+func CreateUser() (user_id int, err error) {
+	user_dto, err := repositories.CreateUser()
+	if err != nil {
+		return  0, err
+	}
+	return user_dto.Id, err
 
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
-
-		if err := tx.Create(&user).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Create(&models.Event{
-			ID:        uuid.New(),
-			UserId:    user.ID,
-			EventType: "CREATE USER",
-			Version:   0,
-			Amount:    &user.Point,
-			Newpoint:  &user.Point,
-		}).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	return user, err
 }
