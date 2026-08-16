@@ -13,8 +13,7 @@ func init() {
 
 func main() {
 	router := gin.Default()
-	router.StaticFile("/leaderboard", "./frontend/leadboard.html")
-	router.GET("/api/leaderboard", handlers.Leaderboard)
-	router.POST("/crud", handlers.Does_it_exsit)
+	router.GET("/leaderboard", handlers.Leaderboard)
+	router.POST("/crud", handlers.UpdateUsers)
 	router.Run()
 }

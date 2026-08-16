@@ -4,70 +4,39 @@ import (
 	"randomshit/database"
 	"randomshit/models"
 	"randomshit/repositories"
-
-	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
-func Addpoint(user *models.Users) (*models.Users, error) {
+var userDB []models.Users
 
-	var olduser models.Users
-
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
-
-		if err := tx.Where("name = ?", user.Name).First(&olduser).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Save(&models.Users{
-			ID:    olduser.ID,
-			Name:  olduser.Name,
-			Point: user.Point + olduser.Point,
-		}).Error; err != nil {
-			return err
-		}
-
-		var lastVersion int
-
-		if err := tx.Model(&models.Event{}).
-			Where("user_id = ?", olduser.ID).
-			Select("COALESCE(MAX(version),0)").Scan(&lastVersion).
-			Error; err != nil {
-
-			return err
-
-		}
-
-		lastVersion += 1
-
-		newscore := olduser.Point + user.Point
-
-		if err := tx.Create(&models.Event{
-
-			ID:        uuid.New(),
-			UserId:    olduser.ID,
-			EventType: "ADD POINT",
-			Version:   lastVersion,
-			Amount:    &user.Point,
-			Oldpoint:  &olduser.Point,
-			Newpoint:  &newscore,
-		}).Error; err != nil {
-			return err
-		}
-
-		return nil
-
-	})
-
-	return &olduser, err
-
+func Leaderboard() (err error, users []models.Users) {
+	err = database.DB.Order("point DESC").Find(&userDB).Error
+	if err != nil {
+		return err, nil
+	}
+	return err, userDB
 }
 
-func CreateUser() (user_id int, err error) {
-	user_dto, err := repositories.CreateUser()
+func NewUpdate(input models.Users) (err error) {
+	err = database.DB.Find(&userDB).Error
 	if err != nil {
-		return  0, err
+		return err
 	}
-	return user_dto.Id, err
 
+	//trying to find this user in db
+	for _, user := range userDB {
+		if user.Name == input.Name {
+			//if it's find it create user
+			err = repositories.UpdateOldUser(input)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+	// else update user in db
+	err = repositories.CreateUser(input)
+	if err != nil {
+		return err
+	}
+	return nil
 }
