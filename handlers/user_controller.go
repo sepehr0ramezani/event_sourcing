@@ -7,6 +7,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// @Summary Get leaderboard
+// @Description Get the current leaderboard
+// @Tags leaderboard
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /leaderboard [get]
 func Leaderboard(c *gin.Context) {
 
 	err, users := service.Leaderboard()

@@ -1,0 +1,23 @@
+basePath: /
+host: localhost:8080
+info:
+  contact: {}
+  description: My first Gin API with Swagger
+  title: My API
+  version: "1.0"
+paths:
+  /leaderboard:
+    get:
+      description: Get the current leaderboard
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get leaderboard
+      tags:
+      - leaderboard
+swagger: "2.0"
