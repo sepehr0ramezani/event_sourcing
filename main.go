@@ -15,11 +15,11 @@ func init() {
 	database.StartDB()
 }
 
-// @title My API
-// @version 1.0
-// @description My first Gin API with Swagger
-// @host localhost:8080
-// @BasePath /
+// @title			preview of this shit
+// @version		1.0
+// @description	swagger for this web
+// @host			localhost:8080
+// @BasePath		/
 func main() {
 
 	router := gin.Default()

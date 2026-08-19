@@ -15,24 +15,98 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/crud": {
+            "post": {
+                "description": "update or create a user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Updateuser"
+                ],
+                "summary": "update in db",
+                "parameters": [
+                    {
+                        "description": "The user you want to create or give points to",
+                        "name": "users",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.Users"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "updated user",
+                        "schema": {
+                            "$ref": "#/definitions/models.Users"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/leaderboard": {
             "get": {
-                "description": "Get the current leaderboard",
+                "description": "order users by their points",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "leaderboard"
                 ],
-                "summary": "Get leaderboard",
+                "summary": "leaderboard of users",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Users ordered by points from highest to lowest",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/models.Users"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "error",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": true
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "models.Users": {
+            "type": "object",
+            "required": [
+                "name",
+                "point"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "point": {
+                    "type": "integer"
                 }
             }
         }
@@ -45,8 +119,8 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "localhost:8080",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "My API",
-	Description:      "My first Gin API with Swagger",
+	Title:            "preview of this shit",
+	Description:      "swagger for this web",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

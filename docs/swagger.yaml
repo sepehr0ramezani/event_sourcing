@@ -1,23 +1,71 @@
 basePath: /
+definitions:
+  models.Users:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      point:
+        type: integer
+    required:
+    - name
+    - point
+    type: object
 host: localhost:8080
 info:
   contact: {}
-  description: My first Gin API with Swagger
-  title: My API
+  description: swagger for this web
+  title: preview of this shit
   version: "1.0"
 paths:
-  /leaderboard:
-    get:
-      description: Get the current leaderboard
+  /crud:
+    post:
+      description: update or create a user
+      parameters:
+      - description: The user you want to create or give points to
+        in: body
+        name: users
+        required: true
+        schema:
+          $ref: '#/definitions/models.Users'
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: updated user
           schema:
-            additionalProperties: true
+            $ref: '#/definitions/models.Users'
+        "400":
+          description: error
+          schema:
+            additionalProperties:
+              type: string
             type: object
-      summary: Get leaderboard
+      summary: update in db
+      tags:
+      - Updateuser
+  /leaderboard:
+    get:
+      description: order users by their points
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Users ordered by points from highest to lowest
+          schema:
+            items:
+              items:
+                $ref: '#/definitions/models.Users'
+              type: array
+            type: array
+        "400":
+          description: error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: leaderboard of users
       tags:
       - leaderboard
 swagger: "2.0"

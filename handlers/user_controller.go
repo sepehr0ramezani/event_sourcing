@@ -7,12 +7,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// @Summary Get leaderboard
-// @Description Get the current leaderboard
-// @Tags leaderboard
-// @Produce json
-// @Success 200 {object} map[string]interface{}
-// @Router /leaderboard [get]
+// @Summary		leaderboard of users
+// @Description	order users by their points
+// @Tags			leaderboard
+// @Produce		json
+// @Success		200	{array}		[]models.Users		"Users ordered by points from highest to lowest"
+// @failure		400	{object}	map[string]string	"error"
+// @Router			/leaderboard [get]
 func Leaderboard(c *gin.Context) {
 
 	err, users := service.Leaderboard()
@@ -25,6 +26,14 @@ func Leaderboard(c *gin.Context) {
 	c.JSON(200, users)
 }
 
+// @Summary		update in db
+// @Description	update or create a user
+// @Tags			Updateuser
+// @Produce		json
+// @Param			users	body		models.Users		true	"The user you want to create or give points to"
+// @Success		200		{object}	models.Users		"updated user"
+// @failure		400		{object}	map[string]string	"error"
+// @Router			/crud [post]
 func UpdateUsers(c *gin.Context) {
 	var input models.Users
 
