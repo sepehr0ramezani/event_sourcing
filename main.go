@@ -4,6 +4,7 @@ import (
 	"randomshit/database"
 	_ "randomshit/docs"
 	"randomshit/handlers"
+	"randomshit/middleware"
 
 	files "github.com/swaggo/files"
 
@@ -13,6 +14,7 @@ import (
 
 func init() {
 	database.StartDB()
+	database.SyncDateBase()
 }
 
 // @title			preview of this shit
@@ -24,8 +26,11 @@ func main() {
 
 	router := gin.Default()
 
-	router.GET("/leaderboard", handlers.Leaderboard)
-	router.POST("/crud", handlers.UpdateUsers)
+	router.GET("/leaderboard", middleware.CheckCookie, handlers.Leaderboard)
+	router.POST("/signup", handlers.SignUp)
+	router.POST("/login", handlers.Login)
+	router.POST("/addpoint", middleware.CheckCookie, handlers.AddPoint)
+
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(files.Handler))
 	router.Run()
 }

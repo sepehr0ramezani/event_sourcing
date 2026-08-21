@@ -1,5 +1,5 @@
 CREATE TABLE events (
-    id UUID PRIMARY KEY,
+    uuid UUID PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
     event_type VARCHAR(100) NOT NULL,
     version INTEGER NOT NULL,
