@@ -3,8 +3,8 @@ package repositories
 import (
 	"errors"
 	"os"
-	"randomshit/database"
-	"randomshit/models"
+	"randomshit/pkg/database"
+	"randomshit/pkg/models"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"

@@ -1,6 +1,6 @@
 package database
 
-import "randomshit/models"
+import "randomshit/pkg/models"
 
 func SyncDateBase() {
 	err := DB.AutoMigrate(

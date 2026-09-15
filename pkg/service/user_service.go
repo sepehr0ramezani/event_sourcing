@@ -1,8 +1,8 @@
 package service
 
 import (
-	"randomshit/models"
-	"randomshit/repositories"
+	"randomshit/pkg/models"
+	"randomshit/pkg/repositories"
 
 	"golang.org/x/crypto/bcrypt"
 )

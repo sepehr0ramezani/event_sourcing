@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"net/http"
-	"randomshit/models"
-	"randomshit/repositories"
-	"randomshit/service"
+	"randomshit/pkg/models"
+	"randomshit/pkg/repositories"
+	"randomshit/pkg/service"
 
 	"github.com/gin-gonic/gin"
 )

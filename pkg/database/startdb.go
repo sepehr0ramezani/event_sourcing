@@ -1,6 +1,7 @@
 package database
 
 import (
+	"log"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -14,11 +15,11 @@ func StartDB() {
 	var err error
 	err = godotenv.Load()
 	if err != nil {
-		panic("cannot load env")
+		log.Fatal("cannot load env")
 	}
 	dsn := os.Getenv("DB_DSN")
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		panic("faild to connect to database")
+		log.Fatal("faild to connect to database")
 	}
 }
