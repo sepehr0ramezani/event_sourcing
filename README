@@ -1,9 +1,704 @@
-project : audit sourcing 
-technologia :golang,gin,gorm,postgresql
+# Event Sourcing Leaderboard API
 
-1.CODE HTML SH RO MAN NAZADAM CHON HICHI JAVASCRIPT BALAD NABODAM
-2.NAME HA UNQIUE HAST VA MESL NICKNAME AMAL MIKONE
-3.BRAYE POST KARDAN AZ POSTMAN ESTEFADE KON
+A backend REST API built with **Go** that combines authentication, user points, versioned event history, PostgreSQL persistence, and a Redis-powered leaderboard.
 
-4.site ke bayad barash post koni ==> http://localhost:8080/crud
-5.site ke azash leaderboard ro migiri ==> http://localhost:8080/leaderboard
+The project is designed around a simple but realistic backend workflow:
+
+1. Users create an account with optional initial points.
+2. Users authenticate through a JWT-based login flow.
+3. Authenticated users can add points to their own account.
+4. Every important state change is recorded as a versioned event.
+5. Redis maintains a fast ranking projection for the leaderboard.
+6. The leaderboard returns users ordered from the highest score to the lowest.
+
+The project also includes **Swagger/OpenAPI documentation** and **k6 load-testing scenarios** for the main API flows.
+
+---
+
+## Architecture Overview
+
+The application separates the operational database from the read-optimized leaderboard layer.
+
+```mermaid
+flowchart LR
+    Client --> Gin
+
+    Gin --> Auth[JWT Cookie Middleware]
+    Gin --> Handlers
+    Handlers --> Services
+    Handlers --> Repositories
+
+    Repositories --> PostgreSQL[(PostgreSQL)]
+    Repositories --> Redis[(Redis ZSET)]
+
+    PostgreSQL --> UserState[User Current State]
+    PostgreSQL --> Events[Versioned Event History]
+
+    Redis --> Leaderboard[Leaderboard Projection]
+```
+
+### Core responsibilities
+
+| Component            | Responsibility                                              |
+| -------------------- | ----------------------------------------------------------- |
+| **Go / Gin**         | HTTP API, routing and request handling                      |
+| **PostgreSQL**       | Primary persistent storage for users and events             |
+| **GORM**             | ORM and database transactions                               |
+| **Event History**    | Records user creation and point changes as versioned events |
+| **Redis Sorted Set** | Fast leaderboard ranking and ordered score retrieval        |
+| **JWT**              | Authentication and user identity                            |
+| **HttpOnly Cookie**  | Transport of the JWT authentication token                   |
+| **bcrypt**           | Password hashing and verification                           |
+| **Swagger/OpenAPI**  | API documentation                                           |
+| **k6**               | Load-testing scenarios                                      |
+
+---
+
+## Main Features
+
+### User Registration
+
+`POST /signup`
+
+Creates a new user account using:
+
+* `username`
+* `password`
+* `point`
+
+The initial point value is optional from the API perspective and defaults to `0` when not provided.
+
+During registration:
+
+1. The password is hashed with bcrypt.
+2. The user is persisted in PostgreSQL.
+3. A `CREATE USER` event is recorded.
+4. The user's initial score is inserted into the Redis leaderboard.
+
+---
+
+### Authentication
+
+`POST /login`
+
+Users authenticate with their registered credentials.
+
+The authentication flow:
+
+```text
+Username + Password
+        ↓
+PostgreSQL User Lookup
+        ↓
+bcrypt Password Verification
+        ↓
+JWT Generation
+        ↓
+HttpOnly Cookie
+```
+
+The JWT contains the authenticated user's identity and expiration time.
+
+Protected endpoints require a valid JWT cookie. Requests without a valid token are rejected by the authentication middleware.
+
+---
+
+### Add Points
+
+`POST /points`
+
+This endpoint is available only to authenticated users.
+
+The request contains the number of points to add. The authenticated user's ID is obtained from the JWT claims rather than from the request body.
+
+The operation performs two important database actions inside a PostgreSQL transaction:
+
+```text
+Current User State
+        ↓
+Add Points
+        ↓
+Persist New User State
+        ↓
+Create UPDATE POINTS Event
+```
+
+The corresponding event records the point-change operation together with its version and resulting state.
+
+After the database transaction, the Redis leaderboard is updated with the user's new score.
+
+---
+
+### Leaderboard
+
+`GET /leaderboard`
+
+Returns users ordered from the highest score to the lowest score.
+
+The endpoint does **not** query PostgreSQL for ranking data. Instead, it reads directly from a Redis Sorted Set.
+
+Redis stores the leaderboard conceptually as:
+
+```text
+leaderboard
+├── user-a → 700
+├── user-b → 500
+├── user-c → 250
+└── ...
+```
+
+Using a Redis **Sorted Set (ZSET)** allows the application to efficiently retrieve users in descending score order.
+
+This makes Redis a dedicated, read-optimized projection for leaderboard queries while PostgreSQL remains the primary persistent store for application state.
+
+---
+
+# Event Sourcing and Versioned Event History
+
+A central design element of the project is the recording of state-changing actions as structured, versioned events.
+
+The `Event` model contains information such as:
+
+* Unique event ID
+* User ID
+* Event type
+* Event version
+* Creation timestamp
+* Point amount
+* Previous point state
+* New point state
+
+Example event flow:
+
+```text
+CREATE USER
+Version: 0
+Initial Point: 100
+        ↓
+UPDATE POINTS
+Version: 1
+Amount: 50
+New Point: 150
+        ↓
+UPDATE POINTS
+Version: 2
+Amount: 25
+New Point: 175
+```
+
+This provides a traceable history of how a user's score changed over time.
+
+### Event types
+
+The current implementation records events such as:
+
+```text
+CREATE USER
+UPDATE POINTS
+```
+
+Each user's events are versioned, allowing the system to preserve the chronological sequence of state changes.
+
+### Current state and event history
+
+The application currently keeps the user's current point value in the `Users` table while also persisting the corresponding event history.
+
+This means the event stream provides a structured and versioned history of state changes, while the current user state is available directly without replaying the complete event stream on every request.
+
+---
+
+# Authentication Architecture
+
+Authentication is implemented using **JWT with an HttpOnly cookie**.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant DB
+
+    Client->>API: POST /login
+    API->>DB: Find user
+    DB-->>API: User + password hash
+    API->>API: Verify password with bcrypt
+    API->>API: Generate JWT
+    API-->>Client: Set HttpOnly token cookie
+
+    Client->>API: Protected request
+    API->>API: Validate JWT
+    API->>API: Extract user_id
+    API->>API: Continue request
+```
+
+Protected endpoints:
+
+* `POST /points`
+* `GET /leaderboard`
+
+The authentication middleware validates:
+
+1. Presence of the token cookie
+2. JWT signature
+3. Expected signing method
+4. Token validity
+5. User identity claims
+
+The authenticated user ID is then stored in the Gin request context for downstream business logic.
+
+---
+
+# Data Consistency
+
+The project uses PostgreSQL transactions when a point update changes multiple pieces of persistent state.
+
+For an authenticated point update:
+
+```text
+BEGIN TRANSACTION
+    │
+    ├── Update User.Point
+    │
+    └── Create UPDATE POINTS Event
+    │
+COMMIT
+```
+
+This ensures the user state and its corresponding event are persisted as part of the same database transaction.
+
+Redis is treated as a derived leaderboard projection rather than the primary source of persistent user state.
+
+Because PostgreSQL and Redis are separate systems, their writes are not part of one atomic transaction. A more advanced production architecture could further harden this synchronization with an **Outbox Pattern** or asynchronous event processing.
+
+---
+
+# API Reference
+
+| Method | Endpoint       | Authentication | Purpose                              |
+| ------ | -------------- | -------------- | ------------------------------------ |
+| `POST` | `/signup`      | Public         | Create a new user                    |
+| `POST` | `/login`       | Public         | Authenticate and issue JWT cookie    |
+| `POST` | `/points`      | Required       | Add points to the authenticated user |
+| `GET`  | `/leaderboard` | Required       | Retrieve ranked users                |
+
+---
+
+## Signup
+
+### Request
+
+```json
+{
+  "username": "sepehr",
+  "password": "example-password",
+  "point": 100
+}
+```
+
+`point` represents the user's initial score and defaults to zero when omitted.
+
+### Internal flow
+
+```text
+Request
+  ↓
+Validate input
+  ↓
+Hash password with bcrypt
+  ↓
+Create User in PostgreSQL
+  ↓
+Create CREATE USER event
+  ↓
+Insert initial score into Redis
+```
+
+---
+
+## Login
+
+### Request
+
+```json
+{
+  "username": "sepehr",
+  "password": "example-password"
+}
+```
+
+A successful login establishes the authenticated session by setting the JWT in an HttpOnly cookie.
+
+---
+
+## Add Points
+
+### Request
+
+```json
+{
+  "point": 50
+}
+```
+
+The authenticated user's identity is taken from the JWT rather than being supplied by the client.
+
+Conceptually:
+
+```text
+Authenticated User: 100 points
+        +
+Added Points: 50
+        =
+New Score: 150
+```
+
+The operation also creates a new versioned event describing the point change.
+
+---
+
+## Leaderboard
+
+### Request
+
+```http
+GET /leaderboard
+```
+
+The response is generated from Redis Sorted Set data and is ordered from the highest score to the lowest.
+
+Example:
+
+```json
+[
+  {
+    "score": 700,
+    "member": "user-a"
+  },
+  {
+    "score": 500,
+    "member": "user-b"
+  },
+  {
+    "score": 250,
+    "member": "user-c"
+  }
+]
+```
+
+The leaderboard is therefore served directly from Redis rather than performing a database-wide sort on every request.
+
+---
+
+# Redis Leaderboard Design
+
+The leaderboard uses a Redis **Sorted Set**:
+
+```text
+Key: leaderboard
+```
+
+Each user is stored with:
+
+```text
+Member → Username
+Score  → Current Points
+```
+
+When a user is created or receives additional points, the Redis score is updated with `ZADD`.
+
+When the leaderboard is requested, the application uses a reverse-range query to retrieve the highest scores first.
+
+This design provides a specialized data structure for ranking instead of relying on repeated SQL ordering operations against the primary database.
+
+---
+
+# Database Design
+
+The project uses PostgreSQL through GORM.
+
+### Users
+
+The user model contains the current application state:
+
+```text
+ID
+Username
+Password
+Point
+```
+
+### Events
+
+The event model contains versioned state-change information:
+
+```text
+UUID
+UserID
+EventType
+Version
+CreatedAt
+Amount
+OldPoint
+NewPoint
+```
+
+The combination of user state and event history provides both:
+
+* fast access to the current state
+* traceability of how the state changed
+
+---
+
+# Security
+
+The application includes several basic authentication and credential-protection mechanisms:
+
+### Password hashing
+
+Passwords are never persisted as plaintext. They are hashed using:
+
+```text
+bcrypt
+```
+
+### JWT authentication
+
+JWT tokens are signed using a server-side secret and include:
+
+* `user_id`
+* `username`
+* expiration time
+
+### HttpOnly cookie
+
+The authentication token is transported through an HttpOnly cookie, preventing client-side JavaScript from directly reading the token.
+
+### Protected endpoints
+
+Unauthorized requests to protected resources are rejected before reaching the endpoint logic.
+
+---
+
+# API Documentation
+
+The project includes generated Swagger/OpenAPI documentation.
+
+After starting the application, the Swagger UI is available through:
+
+```text
+/swagger/index.html
+```
+
+The API documentation covers the main endpoints, request bodies, authentication requirements, and responses.
+
+---
+
+# Load Testing
+
+The project includes **k6** scripts for testing the main application flows.
+
+Current scenarios cover:
+
+```text
+Signup
+Login
+Add Points
+Leaderboard
+```
+
+This allows the API to be evaluated not only functionally but also under simulated concurrent request loads.
+
+---
+
+# Project Structure
+
+```text
+eventsourcing/
+├── cmd/
+│   └── main.go
+│
+├── pkg/
+│   ├── database/
+│   │   ├── Redis.go
+│   │   ├── startdb.go
+│   │   └── syncDB.go
+│   │
+│   ├── docs/
+│   │   ├── docs.go
+│   │   ├── swagger.json
+│   │   └── swagger.yaml
+│   │
+│   ├── handlers/
+│   │   └── user_controller.go
+│   │
+│   ├── k6-load-test/
+│   │   ├── config.js
+│   │   ├── leaderboard.js
+│   │   ├── login.js
+│   │   ├── point.js
+│   │   └── signup.js
+│   │
+│   ├── middleware/
+│   │   └── checkcookie.go
+│   │
+│   ├── migrations/
+│   │   ├── 001.sql
+│   │   └── event.sql
+│   │
+│   ├── models/
+│   │   ├── event.go
+│   │   ├── input.go
+│   │   └── users.go
+│   │
+│   ├── repositories/
+│   │   └── users.go
+│   │
+│   └── service/
+│       └── user_service.go
+│
+├── .env
+├── .gitignore
+├── go.mod
+└── go.sum
+```
+
+---
+
+# Configuration
+
+The application loads its configuration from environment variables.
+
+A local `.env` file is expected at the project root.
+
+Typical configuration values include:
+
+```env
+DB_DSN=...
+SECRET_KEY=...
+REDIS_ADDR=...
+REDIS_PASSWORD=...
+REDIS_DB=...
+```
+
+Sensitive values such as database credentials and JWT secrets should remain outside version control.
+
+---
+
+# Running the Project
+
+Make sure PostgreSQL and Redis are running and the required environment variables are configured.
+
+From the project root:
+
+```bash
+go run ./cmd
+```
+
+The HTTP API starts on:
+
+```text
+http://localhost:8080
+```
+
+Swagger documentation:
+
+```text
+http://localhost:8080/swagger/index.html
+```
+
+A separate profiling endpoint is also initialized on port `6060`.
+
+---
+
+# Technology Stack
+
+| Technology            | Role                               |
+| --------------------- | ---------------------------------- |
+| **Go**                | Backend programming language       |
+| **Gin**               | HTTP framework                     |
+| **GORM**              | ORM and database access            |
+| **PostgreSQL**        | Primary persistent database        |
+| **Redis**             | Leaderboard and ranking projection |
+| **JWT**               | Authentication                     |
+| **bcrypt**            | Password hashing                   |
+| **Swagger / OpenAPI** | API documentation                  |
+| **k6**                | Load testing                       |
+
+---
+
+# Key Backend Concepts Demonstrated
+
+This project focuses on several concepts commonly used in production backend systems:
+
+* REST API design
+* Layered backend architecture
+* Authentication and authorization
+* JWT-based sessions
+* Secure password hashing
+* PostgreSQL transactions
+* Versioned event history
+* Event-driven state tracking
+* Redis Sorted Sets
+* Read-optimized data projections
+* Database/Redis synchronization
+* API documentation with OpenAPI
+* Load testing with k6
+
+---
+
+# Architecture at a Glance
+
+```text
+                    ┌────────────────────┐
+                    │       Client       │
+                    └─────────┬──────────┘
+                              │
+                              ▼
+                    ┌────────────────────┐
+                    │      Gin API       │
+                    └─────────┬──────────┘
+                              │
+              ┌───────────────┼────────────────┐
+              │               │                │
+              ▼               ▼                ▼
+          Signup            Login           Protected APIs
+              │               │                │
+              ▼               ▼                ▼
+        Password Hash      JWT Cookie      JWT Middleware
+              │                                │
+              └──────────────┬─────────────────┘
+                             ▼
+                     ┌───────────────┐
+                     │   PostgreSQL  │
+                     └───────┬───────┘
+                             │
+                  ┌──────────┴──────────┐
+                  │                     │
+                  ▼                     ▼
+             User State            Event History
+                  │
+                  │
+                  ▼
+             ┌───────────────┐
+             │     Redis     │
+             │    ZSET       │
+             └───────┬───────┘
+                     │
+                     ▼
+               Leaderboard
+```
+
+---
+
+# Design Summary
+
+The project intentionally separates responsibilities between storage and access patterns:
+
+* **PostgreSQL** stores the persistent application state and event history.
+* **Events** provide a chronological and versioned record of important state changes.
+* **Redis Sorted Sets** provide a fast ranking layer specifically optimized for leaderboard queries.
+* **JWT + HttpOnly Cookies** handle authenticated access to protected operations.
+* **GORM transactions** keep related database changes together.
+* **Swagger** makes the API easier to inspect and integrate.
+* **k6** provides a way to test the system under load.
+
+The result is a compact backend system that demonstrates more than basic CRUD by combining **authentication, transactional persistence, event-based history, and a Redis-backed read model** in a single application.
