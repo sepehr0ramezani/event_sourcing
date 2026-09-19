@@ -9,13 +9,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// @Summary		leaderboard of users
-// @Description	order users by their points
-// @Tags			leaderboard
-// @Produce		json
-// @Success		200	{array}		[]models.Users		"Users ordered by points from highest to lowest"
-// @failure		400	{object}	map[string]string	"error"
-// @Router			/leaderboard [get]
+// @Summary      Get leaderboard
+// @Description  Get users ordered by their points from highest to lowest.
+// @Tags         leaderboard
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {array} LeaderboardEntry "Leaderboard ordered by points"
+// @Failure      401 {object} map[string]string "Unauthorized"
+// @Router       /leaderboard [get]
 func Leaderboard(c *gin.Context) {
 
 	users, err := service.Leaderboard(c.Request.Context())
@@ -28,6 +29,15 @@ func Leaderboard(c *gin.Context) {
 	c.JSON(200, users)
 }
 
+// @Summary      Sign up
+// @Description  Create a new user account. Initial points are optional and default to 0.
+// @Tags         authentication
+// @Accept       json
+// @Produce      json
+// @Param        request body models.Body true "Signup request"
+// @Success      200 {object} models.Body "User created successfully"
+// @Failure      400 {object} map[string]string "Invalid request or failed to create user"
+// @Router       /signup [post]
 func SignUp(c *gin.Context) {
 	var input models.Body
 	if c.Bind(&input) != nil {
@@ -53,6 +63,15 @@ func SignUp(c *gin.Context) {
 	c.JSON(200, input)
 }
 
+// @Summary      Login
+// @Description  Authenticate a user and set a JWT token in an HttpOnly cookie.
+// @Tags         authentication
+// @Accept       json
+// @Produce      json
+// @Param        request body LoginRequest true "Login credentials"
+// @Success      200 {object} map[string]string "Login successful"
+// @Failure      400 {object} map[string]string "Invalid credentials"
+// @Router       /login [post]
 func Login(c *gin.Context) {
 	var input models.Body
 	if c.Bind(&input) != nil {
@@ -80,6 +99,17 @@ func Login(c *gin.Context) {
 	)
 }
 
+// @Summary      Add points
+// @Description  Add points to the authenticated user's account.
+// @Tags         points
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body AddPointRequest true "Points to add"
+// @Success      200 {object} AddPointRequest "Points added successfully"
+// @Failure      400 {object} map[string]string "Failed to add points"
+// @Failure      401 {object} map[string]string "Unauthorized"
+// @Router       /points [post]
 func AddPoint(c *gin.Context) {
 	var point struct {
 		Point int `json:"point"`
