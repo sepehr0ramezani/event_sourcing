@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"context"
 	"errors"
 	"os"
 	"randomshit/pkg/database"
@@ -9,11 +10,12 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
-func CreateUser(user models.Body, hashpass string) error {
+func CreateUser(ctx context.Context, user models.Body, hashpass string) error {
 
 	newuser := models.Users{
 		Username: user.Username,
@@ -43,9 +45,15 @@ func CreateUser(user models.Body, hashpass string) error {
 		}).Error; err != nil {
 			return err
 		}
-
 		return nil
 	})
+
+	if erro := database.RedisClient.ZAdd(ctx, "leaderboard", redis.Z{
+		Score:  float64(user.Point),
+		Member: user.Username,
+	}).Err(); err != nil {
+		return erro
+	}
 
 	return err
 }
@@ -85,31 +93,32 @@ func Login(body models.Body) (error, string) {
 	return nil, tokenstring
 }
 
-func Leaderboard(userDB *[]models.Users) error {
-	err := database.DB.Order("point DESC").Find(&userDB).Error
+func Leaderboard(ctx context.Context) ([]redis.Z, error) {
+	result, err := database.RedisClient.ZRevRangeWithScores(ctx, "leaderboard", 0, -1).Result()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return result, nil
 }
 
-func Updatepoints(userid any, points int) error {
+func Updatepoints(ctx context.Context, userid any, points int) error {
 	id, exist := userid.(int)
 	var userinfo models.Users
 	if !exist {
-		return errors.New("cant find user id")
+		return errors.New("its not a number")
 	}
 
-	result := database.DB.First(&userinfo, "id = ?", id)
-	if result.Error != nil {
-		return errors.New("its not on db")
-	}
-	userinfo.Point += points
-	return database.DB.Transaction(func(tx *gorm.DB) error {
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.First(&userinfo, "id = ?", id)
+		if result.Error != nil {
+			return errors.New("its not on db")
+		}
+		userinfo.Point += points
 		if err := tx.Save(&userinfo).Error; err != nil {
 			return err
 		}
 		var lastEvent models.Event
+
 		result = tx.
 			Where("user_id = ?", id).
 			Order("version DESC").
@@ -118,17 +127,29 @@ func Updatepoints(userid any, points int) error {
 		if result.Error != nil {
 			return result.Error
 		}
-		lastEvent.Oldpoint = lastEvent.Newpoint
-		lastEvent.Amount = &points
-		*lastEvent.Newpoint += points
-		lastEvent.EventType = "UPDATE POINTS"
-		lastEvent.Version += 1
-		lastEvent.UUID = uuid.New()
-		lastEvent.CreatedAt = time.Now()
+		newpoint := *lastEvent.Newpoint + points
+		newEvent := models.Event{
+			UUID:      uuid.New(),
+			UserId:    lastEvent.UserId,
+			EventType: "UPDATE POINTS",
+			Version:   lastEvent.Version + 1,
+			CreatedAt: time.Now(),
+			Amount:    &points,
+			Oldpoint:  &userinfo.Point,
+			Newpoint:  &newpoint,
+		}
 
-		if err := tx.Create(&lastEvent).Error; err != nil {
+		if err := tx.Create(&newEvent).Error; err != nil {
 			return err
 		}
 		return nil
 	})
+	if err := database.RedisClient.ZAdd(ctx, "leaderboard", redis.Z{
+		Score:  float64(userinfo.Point),
+		Member: userinfo.Username,
+	}).Err(); err != nil {
+		return err
+	}
+
+	return err
 }

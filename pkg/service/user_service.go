@@ -1,20 +1,19 @@
 package service
 
 import (
+	"context"
 	"randomshit/pkg/models"
 	"randomshit/pkg/repositories"
 
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var userDB []models.Users
 
-func Leaderboard() (err error, users []models.Users) {
-	err = repositories.Leaderboard(&userDB)
-	if err != nil {
-		return err, nil
-	}
-	return err, userDB
+func Leaderboard(c context.Context) ([]redis.Z, error) {
+	return repositories.Leaderboard(c)
+
 }
 
 func HashPassword(input models.Body) (error, string) {

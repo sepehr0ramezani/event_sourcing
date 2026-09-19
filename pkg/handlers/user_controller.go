@@ -18,10 +18,10 @@ import (
 // @Router			/leaderboard [get]
 func Leaderboard(c *gin.Context) {
 
-	err, users := service.Leaderboard()
+	users, err := service.Leaderboard(c.Request.Context())
 	if err != nil {
 		c.JSON(400, gin.H{
-			"error": "cant order users",
+			"error": "cant get leaderboard",
 		})
 		return
 	}
@@ -43,7 +43,7 @@ func SignUp(c *gin.Context) {
 		})
 		return
 	}
-	err = repositories.CreateUser(input, hashpass)
+	err = repositories.CreateUser(c, input, hashpass)
 	if err != nil {
 		c.JSON(400, gin.H{
 			"error": err,
@@ -97,7 +97,7 @@ func AddPoint(c *gin.Context) {
 		})
 		return
 	}
-	err := repositories.Updatepoints(UserID, point.Point)
+	err := repositories.Updatepoints(c, UserID, point.Point)
 	if err != nil {
 		c.JSON(400, gin.H{
 			"error": "can't update your points",
