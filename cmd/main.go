@@ -2,45 +2,41 @@ package main
 
 import (
 	"log"
-	"net/http"
-	_ "net/http/pprof"
-	"randomshit/pkg/database"
-	_ "randomshit/pkg/docs"
-	"randomshit/pkg/handlers"
-	"randomshit/pkg/middleware"
+	"os"
+	"time"
 
-	files "github.com/swaggo/files"
+	"randomshit/internal/applications/leaderboard/auth"
+	handlers "randomshit/internal/applications/leaderboard/handler"
+	"randomshit/internal/applications/leaderboard/middleware"
+	"randomshit/internal/applications/leaderboard/repository"
+	"randomshit/internal/applications/leaderboard/service"
+	"randomshit/internal/infrastructure/database"
 
 	"github.com/gin-gonic/gin"
-	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func init() {
-	database.StartDB()
-	database.SyncDateBase()
-	database.ConnectRedis()
-	err := database.PingRedis()
-	if err != nil {
-		log.Fatal("can't connect to redis")
-		return
-	}
-
-}
-
-// @title			preview of this shit
-// @version		1.0
-// @description	swagger for this web
-// @host			localhost:8080
-// @BasePath		/
 func main() {
+	db, err := database.StartDB()
+	if err != nil {
+		log.Fatalf("start database: %v", err)
+	}
+	defer db.Close()
+
+	userRepo := repository.NewRepo(db)
+	userService := service.NewUserService(userRepo)
+	tokenManager, err := auth.NewJWTManager(os.Getenv("SECRET_KEY"), 24*time.Hour)
+	if err != nil {
+		log.Fatalf("configure JWT: %v", err)
+	}
+	userHandler := handlers.NewUserHandler(userService, tokenManager, os.Getenv("COOKIE_SECURE") == "true")
 
 	router := gin.Default()
+	router.POST("/signup", userHandler.SignUp)
+	router.POST("/login", userHandler.Login)
+	router.GET("/leaderboard", userHandler.Leaderboard)
+	router.POST("/points", middleware.CheckCookie(tokenManager), userHandler.AddPoint)
 
-	go http.ListenAndServe(":6060", nil)
-	router.GET("/leaderboard", middleware.CheckCookie, handlers.Leaderboard)
-	router.POST("/signup", handlers.SignUp)
-	router.POST("/login", handlers.Login)
-	router.POST("/addpoint", middleware.CheckCookie, handlers.AddPoint)
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(files.Handler))
-	router.Run()
+	if err := router.Run(":8080"); err != nil {
+		log.Fatalf("start HTTP server: %v", err)
+	}
 }

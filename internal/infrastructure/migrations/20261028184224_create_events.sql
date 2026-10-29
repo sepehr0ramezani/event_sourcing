@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE events (
     uuid UUID PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
@@ -10,3 +11,6 @@ CREATE TABLE events (
 
     UNIQUE (user_id, version)
 );
+
+-- +goose Down
+DROP TABLE events;
