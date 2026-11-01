@@ -6,7 +6,15 @@ package repository
 
 import (
 	"database/sql"
+	"time"
 )
+
+type Event struct {
+	ID        int32
+	UserID    int32
+	Amount    int32
+	CreatedAt time.Time
+}
 
 type User struct {
 	ID           int32

@@ -23,6 +23,16 @@ SET point = COALESCE(point, 0) + sqlc.arg(point)
 WHERE id = sqlc.arg(id)
 RETURNING username, point;
 
+-- name: AddESPoint :exec
+INSERT INTO events(
+    user_id,
+    amount
+)
+VALUES (
+    sqlc.arg(user_id)::integer,
+    sqlc.arg(amount)::integer
+);
+
 -- name: LeaderBoard :many
 SELECT username,point
 FROM users

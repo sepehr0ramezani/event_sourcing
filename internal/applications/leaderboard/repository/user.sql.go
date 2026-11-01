@@ -10,6 +10,27 @@ import (
 	"database/sql"
 )
 
+const addESPoint = `-- name: AddESPoint :exec
+INSERT INTO events(
+    user_id,
+    amount
+)
+VALUES (
+    $1::integer,
+    $2::integer
+)
+`
+
+type AddESPointParams struct {
+	UserID int32
+	Amount int32
+}
+
+func (q *Queries) AddESPoint(ctx context.Context, arg AddESPointParams) error {
+	_, err := q.db.ExecContext(ctx, addESPoint, arg.UserID, arg.Amount)
+	return err
+}
+
 const addPoint = `-- name: AddPoint :one
 UPDATE users
 SET point = COALESCE(point, 0) + $1

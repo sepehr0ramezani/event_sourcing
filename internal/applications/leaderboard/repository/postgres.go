@@ -12,11 +12,15 @@ import (
 var _ port.UserRepo = (*Repository)(nil)
 
 type Repository struct {
+	db      *sql.DB
 	queries *Queries
 }
 
-func NewRepo(db DBTX) *Repository {
-	return &Repository{queries: New(db)}
+func NewRepo(db *sql.DB) *Repository {
+	return &Repository{
+		db:      db,
+		queries: New(db),
+	}
 }
 
 func (r *Repository) CreateUser(ctx context.Context, user *models.Users) (*models.Users, error) {
@@ -51,7 +55,15 @@ func (r *Repository) FindByUsername(ctx context.Context, username string) (*mode
 }
 
 func (r *Repository) AddPoint(ctx context.Context, id, sumpoint int) (*models.Users, error) {
-	userinfo, err := r.queries.AddPoint(ctx, AddPointParams{
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	qtx := r.queries.WithTx(tx)
+
+	userinfo, err := qtx.AddPoint(ctx, AddPointParams{
 		Point: sql.NullInt32{
 			Int32: int32(sumpoint),
 			Valid: true,
@@ -62,6 +74,17 @@ func (r *Repository) AddPoint(ctx context.Context, id, sumpoint int) (*models.Us
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, port.ErrUserNotFound
 		}
+		return nil, err
+	}
+
+	if err := qtx.AddESPoint(ctx, AddESPointParams{
+		UserID: int32(id),
+		Amount: int32(sumpoint),
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
