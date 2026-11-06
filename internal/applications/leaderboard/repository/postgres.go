@@ -3,10 +3,19 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"time"
 
 	"randomshit/internal/applications/leaderboard/models"
 	"randomshit/internal/applications/leaderboard/port"
+
+	"github.com/redis/go-redis/v9"
+)
+
+const (
+	leaderboardCacheKey = "leaderboard:v1"
+	leaderboardCacheTTL = 30 * time.Second
 )
 
 var _ port.UserRepo = (*Repository)(nil)
@@ -14,12 +23,14 @@ var _ port.UserRepo = (*Repository)(nil)
 type Repository struct {
 	db      *sql.DB
 	queries *Queries
+	redis   *redis.Client
 }
 
-func NewRepo(db *sql.DB) *Repository {
+func NewRepo(db *sql.DB, redisClient *redis.Client) *Repository {
 	return &Repository{
 		db:      db,
 		queries: New(db),
+		redis:   redisClient,
 	}
 }
 
@@ -30,6 +41,9 @@ func (r *Repository) CreateUser(ctx context.Context, user *models.Users) (*model
 	})
 	if err != nil {
 		return nil, err
+	}
+	if r.redis != nil {
+		_ = r.redis.Del(ctx, leaderboardCacheKey).Err()
 	}
 
 	return &models.Users{
@@ -87,6 +101,9 @@ func (r *Repository) AddPoint(ctx context.Context, id, sumpoint int) (*models.Us
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	if r.redis != nil {
+		_ = r.redis.Del(ctx, leaderboardCacheKey).Err()
+	}
 
 	return &models.Users{
 		Username: userinfo.Username,
@@ -95,6 +112,17 @@ func (r *Repository) AddPoint(ctx context.Context, id, sumpoint int) (*models.Us
 }
 
 func (r *Repository) Leaderboard(ctx context.Context) ([]models.LeaderboardEntry, error) {
+	if r.redis != nil {
+		cached, err := r.redis.Get(ctx, leaderboardCacheKey).Bytes()
+		if err == nil {
+			var entries []models.LeaderboardEntry
+			if json.Unmarshal(cached, &entries) == nil {
+				return entries, nil
+			}
+		}
+		// Cache miss or Redis error: rebuild the result from Postgres.
+	}
+
 	leaderBoard, err := r.queries.LeaderBoard(ctx)
 	if err != nil {
 		return nil, err
@@ -109,6 +137,12 @@ func (r *Repository) Leaderboard(ctx context.Context) ([]models.LeaderboardEntry
 			Point:    int(row.Point.Int32),
 		})
 
+	}
+
+	if r.redis != nil {
+		if data, err := json.Marshal(entries); err == nil {
+			_ = r.redis.Set(ctx, leaderboardCacheKey, data, leaderboardCacheTTL).Err()
+		}
 	}
 
 	return entries, nil

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"time"
@@ -16,13 +17,22 @@ import (
 )
 
 func main() {
+
+	//connect to database
 	db, err := database.StartDB()
 	if err != nil {
 		log.Fatalf("start database: %v", err)
 	}
 	defer db.Close()
 
-	userRepo := repository.NewRepo(db)
+	//connect to redis
+	redisClient, err := database.ConnectToRedis(context.Background())
+	if err != nil {
+		log.Fatalf("connect to Redis: %v", err)
+	}
+	defer redisClient.Close()
+
+	userRepo := repository.NewRepo(db, redisClient)
 	userService := service.NewUserService(userRepo)
 	tokenManager, err := auth.NewJWTManager(os.Getenv("SECRET_KEY"), 24*time.Hour)
 	if err != nil {
